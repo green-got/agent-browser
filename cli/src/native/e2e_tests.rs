@@ -3504,6 +3504,68 @@ async fn e2e_hover_scroll_press() {
 
 #[tokio::test]
 #[ignore]
+async fn e2e_mouse_wheel_scrolls_the_element_under_the_pointer() {
+    let mut state = DaemonState::new();
+
+    let resp = execute_command(
+        &json!({ "id": "1", "action": "launch", "headless": true }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let html = r#"<body style="margin:0;height:3000px">
+        <div id="box" style="position:absolute;left:400px;top:300px;width:300px;height:200px;overflow:auto">
+        <div style="height:2000px"></div></div></body>"#;
+    let resp = execute_command(
+        &json!({
+            "id": "2",
+            "action": "navigate",
+            "url": format!("data:text/html;base64,{}", STANDARD.encode(html))
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "3", "action": "mousemove", "x": 550, "y": 400 }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "wheel", "deltaX": 0, "deltaY": 300 }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let scrolled = json!({ "box": 300, "page": 0 });
+    let script = "({ box: document.getElementById('box').scrollTop, page: scrollY })";
+    let mut last = Value::Null;
+    for _ in 0..20 {
+        let resp = execute_command(
+            &json!({ "id": "5", "action": "evaluate", "script": script }),
+            &mut state,
+        )
+        .await;
+        assert_success(&resp);
+        last = get_data(&resp)["result"].clone();
+        if last == scrolled {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(last, scrolled);
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+}
+
+#[tokio::test]
+#[ignore]
 async fn e2e_mouse_down_move_up_preserves_drag_state() {
     let mut state = DaemonState::new();
 

@@ -9087,8 +9087,16 @@ async fn handle_clipboard(cmd: &Value, state: &DaemonState) -> Result<Value, Str
 async fn handle_wheel(cmd: &Value, state: &DaemonState) -> Result<Value, String> {
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
     let session_id = mgr.active_session_id()?.to_string();
-    let x = cmd.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let y = cmd.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    // Without coordinates the wheel turns where the pointer is, as a physical wheel does, so it
+    // scrolls the element under the pointer rather than whatever sits at the page's corner.
+    let x = cmd
+        .get("x")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(state.mouse_state.x);
+    let y = cmd
+        .get("y")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(state.mouse_state.y);
     let delta_x = cmd.get("deltaX").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let delta_y = cmd.get("deltaY").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
