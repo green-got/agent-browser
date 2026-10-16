@@ -1,6 +1,7 @@
 # Green-Got's build of agent-browser carrying fixes upstream has not released yet; the core
 # repository's sandbox and app platform images install these binaries. Retire this fork once
-# upstream releases the fixes (vercel-labs/agent-browser#2084).
+# upstream releases the fixes: the wheel at the pointer (vercel-labs/agent-browser#2084) and
+# `record --condense`.
 name: Green-Got release
 
 on:
@@ -75,5 +76,5 @@ jobs:
           sha256sum agent-browser-linux-* > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --target "$GITHUB_SHA" \
-            --notes "agent-browser ${GITHUB_REF_NAME%%-green-got.*} with fixes upstream has not released: the mouse wheel turns where the pointer is (vercel-labs/agent-browser#2084)." \
+            --notes "agent-browser ${GITHUB_REF_NAME%%-green-got.*} with changes upstream has not released: the mouse wheel turns where the pointer is (vercel-labs/agent-browser#2084), and \`record --condense\` cuts still stretches from recordings." \
             agent-browser-linux-* SHA256SUMS
