@@ -40,10 +40,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
-      - name: Install cargo-zigbuild
-        run: |
-          pip3 install ziglang
-          cargo install cargo-zigbuild --version 0.23.2 --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli -> target
+          key: ${{ matrix.rust_target }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.2
+      - name: Install Zig
+        run: pip3 install ziglang
       - run: cargo zigbuild --release --manifest-path cli/Cargo.toml --target ${{ matrix.build_target }}
       - name: Check the glibc floor
         run: |
