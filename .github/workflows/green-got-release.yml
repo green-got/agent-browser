@@ -1,5 +1,6 @@
 # Green-Got's build of agent-browser carrying fixes upstream has not released yet; the core
-# repository's sandbox and app platform images install these binaries. Retire this fork once
+# repository's sandbox and app platform images install the Linux binaries, and Macs can use the
+# macOS one. Retire this fork once
 # upstream releases the fixes: the wheel at the pointer (vercel-labs/agent-browser#2084) and
 # `record --condense`. Smooth scrolling in `human` and `smooth` input modes is the fork's own.
 name: Green-Got release
@@ -65,11 +66,40 @@ jobs:
           name: ${{ matrix.binary }}
           path: artifacts/${{ matrix.binary }}
 
+  build-macos:
+    name: Build agent-browser-darwin-arm64
+    runs-on: blacksmith-6vcpu-macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run version:sync
+      - run: pnpm --filter dashboard build
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli -> target
+          key: aarch64-apple-darwin
+      - run: cargo build --release --manifest-path cli/Cargo.toml --target aarch64-apple-darwin
+      - run: |
+          mkdir -p artifacts
+          cp cli/target/aarch64-apple-darwin/release/agent-browser artifacts/agent-browser-darwin-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-browser-darwin-arm64
+          path: artifacts/agent-browser-darwin-arm64
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
-    needs: build
+    needs: [build, build-macos]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/download-artifact@v4
@@ -82,8 +112,8 @@ jobs:
         run: |
           set -euo pipefail
           cd artifacts
-          sha256sum agent-browser-linux-* > SHA256SUMS
+          sha256sum agent-browser-* > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --target "$GITHUB_SHA" \
             --notes "agent-browser ${GITHUB_REF_NAME%%-green-got.*} with changes upstream has not released: the mouse wheel turns where the pointer is (vercel-labs/agent-browser#2084), \`record --condense\` cuts still stretches from recordings, and scrolls glide in \`--input-mode human\` and \`smooth\`, or with \`scroll --human\`." \
-            agent-browser-linux-* SHA256SUMS
+            agent-browser-* SHA256SUMS
