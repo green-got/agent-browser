@@ -1174,6 +1174,7 @@ fn obscura_test_environment() -> EnvGuard<'static> {
         "AGENT_BROWSER_EXECUTABLE_PATH",
         "OBSCURA_ALLOW_PRIVATE_NETWORK",
         "AGENT_BROWSER_OBSCURA_STEALTH",
+        "AGENT_BROWSER_ARGS",
         "AGENT_BROWSER_PROXY",
         "AGENT_BROWSER_PROXY_BYPASS",
         "HTTP_PROXY",
@@ -1192,6 +1193,7 @@ fn obscura_test_environment() -> EnvGuard<'static> {
         "AGENT_BROWSER_ENGINE",
         "AGENT_BROWSER_EXECUTABLE_PATH",
         "AGENT_BROWSER_OBSCURA_STEALTH",
+        "AGENT_BROWSER_ARGS",
         "AGENT_BROWSER_PROXY",
         "AGENT_BROWSER_PROXY_BYPASS",
         "HTTP_PROXY",
@@ -1281,6 +1283,7 @@ fn test_obscura_e2e_clears_inherited_connection_modes() {
         "AGENT_BROWSER_CDP",
         "AGENT_BROWSER_AUTO_CONNECT",
         "AGENT_BROWSER_PROVIDER",
+        "AGENT_BROWSER_ARGS",
     ];
     if std::env::var(PROBE).as_deref() == Ok("1") {
         let _env = obscura_test_environment();
@@ -1301,6 +1304,7 @@ fn test_obscura_e2e_clears_inherited_connection_modes() {
         .env(keys[0], format!("ws://{}", listener.local_addr().unwrap()))
         .env(keys[1], "1")
         .env(keys[2], "obscura-test-not-a-provider")
+        .env(keys[3], "--no-sandbox")
         .args([
             "--exact",
             "native::e2e_tests::test_obscura_e2e_clears_inherited_connection_modes",
@@ -1635,7 +1639,14 @@ async fn e2e_snapshot_and_click_ref() {
     assert_success(&resp);
 
     let resp = execute_command(
-        &json!({ "id": "2", "action": "navigate", "url": "https://example.com" }),
+        &json!({ "id": "2", "action": "navigate", "url": "about:blank" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "2a", "action": "setcontent", "html": "<h1>Snapshot fixture</h1><a href='about:blank#clicked'>Follow link</a>" }),
         &mut state,
     )
     .await;
@@ -1646,7 +1657,7 @@ async fn e2e_snapshot_and_click_ref() {
     assert_success(&resp);
     let snapshot = get_data(&resp)["snapshot"].as_str().unwrap();
     assert!(
-        snapshot.contains("Example Domain"),
+        snapshot.contains("Snapshot fixture"),
         "Snapshot should contain heading"
     );
     assert!(snapshot.contains("ref=e1"), "Snapshot should have ref e1");
@@ -1656,7 +1667,7 @@ async fn e2e_snapshot_and_click_ref() {
         "Snapshot should have a link element"
     );
 
-    // Click the link by ref (e2 is the "More information..." link)
+    // Click the fixture link by ref.
     let resp = execute_command(
         &json!({ "id": "4", "action": "click", "selector": "e2" }),
         &mut state,
@@ -1672,8 +1683,8 @@ async fn e2e_snapshot_and_click_ref() {
     assert_success(&resp);
     let url = get_data(&resp)["url"].as_str().unwrap();
     assert!(
-        url.contains("iana.org"),
-        "Should have navigated to iana.org, got: {}",
+        url == "about:blank#clicked",
+        "Should have followed the fixture link, got: {}",
         url
     );
 
