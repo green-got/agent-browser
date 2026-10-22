@@ -223,6 +223,14 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
+      - name: Install Obscura test engine
+        run: |
+          mkdir -p "$RUNNER_TEMP/obscura"
+          curl -fsSL https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.2/obscura-x86_64-linux.tar.gz -o "$RUNNER_TEMP/obscura.tar.gz"
+          echo "9e5d9d081909ea983bc8c94999bb3d411fd6b74a9788504295b7e25f84310505  $RUNNER_TEMP/obscura.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/obscura.tar.gz" -C "$RUNNER_TEMP/obscura"
+          echo "OBSCURA_BIN=$RUNNER_TEMP/obscura/obscura" >> "$GITHUB_ENV"
+
       - name: Run e2e tests
         run: cargo test --profile ci --manifest-path cli/Cargo.toml e2e -- --ignored --test-threads=1
 
@@ -262,6 +270,9 @@ jobs:
       - name: Build Rust CLI
         run: cargo build --release --manifest-path cli/Cargo.toml --target ${{ matrix.target }}
 
+      - name: Stage the built CLI for packaging
+        run: cp cli/target/${{ matrix.target }}/release/agent-browser bin/${{ matrix.binary }}
+
       - name: Test npm global install
         run: |
           npm pack
@@ -269,3 +280,11 @@ jobs:
           agent-browser --version
         shell: bash
 
+
+      - name: Verify the installed native binary
+        run: |
+          installed_binary=$(command -v agent-browser)
+          target=$(readlink "$installed_binary")
+          [[ "$target" == *"${{ matrix.binary }}"* ]]
+          cmp cli/target/${{ matrix.target }}/release/agent-browser "$installed_binary"
+        shell: bash
