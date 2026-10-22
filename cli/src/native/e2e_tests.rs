@@ -4509,6 +4509,112 @@ async fn e2e_domain_filter_ignores_blocked_document_of_abandoned_navigation() {
 
 #[tokio::test]
 #[ignore]
+async fn e2e_domain_filter_does_not_retain_blocked_iframe_documents() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        for _ in 0..20 {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let response = if request.starts_with("GET /slow ") {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .to_string()
+                } else {
+                    let body = format!(
+                        "<!doctype html><title>Allowed</title><iframe id=f></iframe><img src=/slow>\
+                         <script>let i = 0; const t = setInterval(() => {{ f.src = 'http://127.0.0.1:{}/denied?' + i++; if (i === 10) clearInterval(t); }}, 100);</script>",
+                        port,
+                    );
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body,
+                    )
+                };
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.flush().await;
+            });
+        }
+    });
+
+    let mut state = DaemonState::new();
+    {
+        let mut df = state.domain_filter.write().await;
+        *df = Some(super::network::DomainFilter::new("localhost"));
+    }
+
+    let resp = execute_command(
+        // Keep the iframe in-process: applying network controls to a blocked
+        // cross-site iframe's own target currently fails the navigation.
+        &json!({
+            "id": "1",
+            "action": "launch",
+            "headless": true,
+            "args": ["--disable-site-isolation-trials", "--disable-features=IsolateOrigins,site-per-process"],
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    // The slow image holds the navigation in flight while the iframe keeps
+    // navigating to a denied host.
+    let pending_navigation = state.pending_navigation.clone();
+    let sampler = tokio::spawn(async move {
+        let mut max_blocked = 0;
+        let mut samples_in_flight = 0;
+        for _ in 0..150 {
+            if let Some(pending) = pending_navigation
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+            {
+                samples_in_flight += 1;
+                max_blocked = max_blocked.max(pending.blocked_count());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        (samples_in_flight, max_blocked)
+    });
+
+    let resp = execute_command(
+        &json!({
+            "id": "2",
+            "action": "navigate",
+            "url": format!("http://localhost:{}/", port),
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let (samples_in_flight, max_blocked) = sampler.await.unwrap();
+    assert!(samples_in_flight > 0, "Navigation was never seen in flight");
+    assert_eq!(max_blocked, 0, "Blocked iframe documents were retained");
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        state
+            .pending_navigation
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_none(),
+        "Blocked documents are tracked after the navigation settled"
+    );
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+    server.abort();
+}
+
+#[tokio::test]
+#[ignore]
 async fn e2e_domain_filter_blocks_page_created_popup_before_first_request() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();

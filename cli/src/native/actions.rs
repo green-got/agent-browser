@@ -198,6 +198,40 @@ pub struct FetchPausedRequest {
     pub request_headers: Option<serde_json::Map<String, Value>>,
 }
 
+/// Main-frame documents the domain filter blocked while one navigation was in
+/// flight, keyed by network request ID, which for a navigation is its loader
+/// ID. A late event from an abandoned navigation in the same frame carries
+/// another loader ID, so it cannot fail the navigation in flight.
+#[derive(Debug)]
+pub struct PendingNavigation {
+    /// The main frame shares its ID with the page's target.
+    frame_id: String,
+    blocked: HashMap<String, String>,
+}
+
+impl PendingNavigation {
+    fn new(frame_id: String) -> Self {
+        Self {
+            frame_id,
+            blocked: HashMap::new(),
+        }
+    }
+
+    fn record_blocked(&mut self, paused: &FetchPausedRequest) {
+        if paused.frame_id != self.frame_id {
+            return;
+        }
+        if let Some(network_id) = &paused.network_id {
+            self.blocked.insert(network_id.clone(), paused.url.clone());
+        }
+    }
+
+    #[cfg(test)]
+    pub fn blocked_count(&self) -> usize {
+        self.blocked.len()
+    }
+}
+
 pub enum BackendType {
     Cdp,
     WebDriver,
@@ -608,11 +642,10 @@ pub struct DaemonState {
     /// Key is the origin (scheme + host + port), value is the headers map.
     /// Wrapped in Arc<RwLock<>> so the background Fetch handler can read it.
     pub origin_headers: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
-    /// Document URLs the domain filter blocked, keyed by the network request
-    /// ID, which for a navigation is its loader ID, so navigation can report a
-    /// redirect that landed on the blocked page. Keying by frame would let a
-    /// late event from an abandoned navigation fail the next one in that frame.
-    pub blocked_documents: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// The navigation in flight, so the fetch handler can record the main-frame
+    /// documents the domain filter blocks for it. `None` between navigations,
+    /// when nothing could claim a blocked document.
+    pub pending_navigation: Arc<std::sync::Mutex<Option<PendingNavigation>>>,
     /// Proxy authentication credentials (username, password) for handling
     /// Fetch.authRequired events from authenticated proxies.
     pub proxy_credentials: Arc<RwLock<Option<(String, String)>>>,
@@ -750,7 +783,7 @@ impl DaemonState {
             iframe_sessions: HashMap::new(),
             active_iframe_sessions: HashSet::new(),
             origin_headers: Arc::new(RwLock::new(HashMap::new())),
-            blocked_documents: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            pending_navigation: Arc::new(std::sync::Mutex::new(None)),
             proxy_credentials: Arc::new(RwLock::new(None)),
             fetch_handler_task: None,
             dialog_handler_task: None,
@@ -861,7 +894,7 @@ impl DaemonState {
         let domain_filter = self.domain_filter.clone();
         let routes = self.routes.clone();
         let origin_headers = self.origin_headers.clone();
-        let blocked_documents = self.blocked_documents.clone();
+        let pending_navigation = self.pending_navigation.clone();
         let proxy_credentials = self.proxy_credentials.clone();
         let capture_session = self.recording_state.capture_session.clone();
 
@@ -1042,7 +1075,7 @@ impl DaemonState {
                             df.as_ref(),
                             &rt,
                             &oh,
-                            &blocked_documents,
+                            &pending_navigation,
                             &paused,
                         )
                         .await;
@@ -5552,13 +5585,21 @@ async fn navigate_active_page(
     }
     state.active_iframe_sessions.clear();
     state.active_frame_id = None;
-    state
-        .blocked_documents
+    let mgr = state.browser.as_mut().ok_or("Browser not launched")?;
+    *state
+        .pending_navigation
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = mgr
+        .active_target_id()
+        .ok()
+        .map(|target_id| PendingNavigation::new(target_id.to_string()));
+    let result = mgr.navigate(url, wait_until).await;
+    let pending = state
+        .pending_navigation
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .clear();
-    let mgr = state.browser.as_mut().ok_or("Browser not launched")?;
-    let result = mgr.navigate(url, wait_until).await?;
+        .take();
+    let result = result?;
     state.refresh_active_iframe_sessions().await;
 
     // The domain filter answers a blocked document with a 403 page, so a
@@ -5566,13 +5607,8 @@ async fn navigate_active_page(
     let blocked = result
         .get("loaderId")
         .and_then(|v| v.as_str())
-        .and_then(|loader_id| {
-            state
-                .blocked_documents
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(loader_id)
-        });
+        .zip(pending)
+        .and_then(|(loader_id, mut pending)| pending.blocked.remove(loader_id));
     if let Some(blocked_url) = blocked {
         return Err(format!(
             "Navigation to {} was blocked by the domain filter",
@@ -11845,7 +11881,7 @@ async fn resolve_fetch_paused(
     domain_filter: Option<&DomainFilter>,
     routes: &[RouteEntry],
     origin_headers: &HashMap<String, HashMap<String, String>>,
-    blocked_documents: &std::sync::Mutex<HashMap<String, String>>,
+    pending_navigation: &std::sync::Mutex<Option<PendingNavigation>>,
     paused: &FetchPausedRequest,
 ) {
     let session_id = &paused.session_id;
@@ -11882,11 +11918,12 @@ async fn resolve_fetch_paused(
             if let Some(hostname) = parsed.host_str() {
                 if !filter.is_allowed(hostname) {
                     if paused.resource_type.eq_ignore_ascii_case("document") {
-                        if let Some(network_id) = &paused.network_id {
-                            blocked_documents
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .insert(network_id.clone(), paused.url.clone());
+                        if let Some(pending) = pending_navigation
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_mut()
+                        {
+                            pending.record_blocked(paused);
                         }
                         let error_body = format!(
                             "<html><body><h1>Blocked</h1><p>Navigation to {} is not allowed by domain filter.</p></body></html>",
