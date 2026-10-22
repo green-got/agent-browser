@@ -1174,6 +1174,7 @@ fn obscura_test_environment() -> EnvGuard<'static> {
         "AGENT_BROWSER_EXECUTABLE_PATH",
         "OBSCURA_ALLOW_PRIVATE_NETWORK",
         "AGENT_BROWSER_OBSCURA_STEALTH",
+        "AGENT_BROWSER_ARGS",
         "AGENT_BROWSER_PROXY",
         "AGENT_BROWSER_PROXY_BYPASS",
         "HTTP_PROXY",
@@ -1192,6 +1193,7 @@ fn obscura_test_environment() -> EnvGuard<'static> {
         "AGENT_BROWSER_ENGINE",
         "AGENT_BROWSER_EXECUTABLE_PATH",
         "AGENT_BROWSER_OBSCURA_STEALTH",
+        "AGENT_BROWSER_ARGS",
         "AGENT_BROWSER_PROXY",
         "AGENT_BROWSER_PROXY_BYPASS",
         "HTTP_PROXY",
@@ -1281,6 +1283,7 @@ fn test_obscura_e2e_clears_inherited_connection_modes() {
         "AGENT_BROWSER_CDP",
         "AGENT_BROWSER_AUTO_CONNECT",
         "AGENT_BROWSER_PROVIDER",
+        "AGENT_BROWSER_ARGS",
     ];
     if std::env::var(PROBE).as_deref() == Ok("1") {
         let _env = obscura_test_environment();
@@ -1301,6 +1304,7 @@ fn test_obscura_e2e_clears_inherited_connection_modes() {
         .env(keys[0], format!("ws://{}", listener.local_addr().unwrap()))
         .env(keys[1], "1")
         .env(keys[2], "obscura-test-not-a-provider")
+        .env(keys[3], "--no-sandbox")
         .args([
             "--exact",
             "native::e2e_tests::test_obscura_e2e_clears_inherited_connection_modes",
@@ -3502,6 +3506,68 @@ async fn e2e_hover_scroll_press() {
 // ---------------------------------------------------------------------------
 // Raw mouse regressions
 // ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn e2e_mouse_wheel_scrolls_the_element_under_the_pointer() {
+    let mut state = DaemonState::new();
+
+    let resp = execute_command(
+        &json!({ "id": "1", "action": "launch", "headless": true }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let html = r#"<body style="margin:0;height:3000px">
+        <div id="box" style="position:absolute;left:400px;top:300px;width:300px;height:200px;overflow:auto">
+        <div style="height:2000px"></div></div></body>"#;
+    let resp = execute_command(
+        &json!({
+            "id": "2",
+            "action": "navigate",
+            "url": format!("data:text/html;base64,{}", STANDARD.encode(html))
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "3", "action": "mousemove", "x": 550, "y": 400 }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "wheel", "deltaX": 0, "deltaY": 300 }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let scrolled = json!({ "box": 300, "page": 0 });
+    let script = "({ box: document.getElementById('box').scrollTop, page: scrollY })";
+    let mut last = Value::Null;
+    for _ in 0..20 {
+        let resp = execute_command(
+            &json!({ "id": "5", "action": "evaluate", "script": script }),
+            &mut state,
+        )
+        .await;
+        assert_success(&resp);
+        last = get_data(&resp)["result"].clone();
+        if last == scrolled {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(last, scrolled);
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+}
 
 #[tokio::test]
 #[ignore]

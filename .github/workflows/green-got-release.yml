@@ -1,0 +1,89 @@
+# Green-Got's build of agent-browser carrying fixes upstream has not released yet; the core
+# repository's sandbox and app platform images install these binaries. Retire this fork once
+# upstream releases the fixes: the wheel at the pointer (vercel-labs/agent-browser#2084) and
+# `record --condense`.
+name: Green-Got release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*-green-got.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.binary }}
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - binary: agent-browser-linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+            build_target: x86_64-unknown-linux-gnu.2.28
+          - binary: agent-browser-linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            build_target: aarch64-unknown-linux-gnu.2.28
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run version:sync
+      - run: pnpm --filter dashboard build
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli -> target
+          key: ${{ matrix.rust_target }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild@0.23.2
+      - name: Install Zig
+        run: pip3 install ziglang
+      - run: cargo zigbuild --release --manifest-path cli/Cargo.toml --target ${{ matrix.build_target }}
+      - name: Check the glibc floor
+        run: |
+          set -euo pipefail
+          binary=cli/target/${{ matrix.rust_target }}/release/agent-browser
+          if objdump -p "$binary" | grep -E 'GLIBC_2\.([3-9][0-9]|29)'; then
+            echo "ERROR: requires glibc newer than 2.28"
+            exit 1
+          fi
+          mkdir -p artifacts
+          cp "$binary" artifacts/${{ matrix.binary }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: artifacts/${{ matrix.binary }}
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum agent-browser-linux-* > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --target "$GITHUB_SHA" \
+            --notes "agent-browser ${GITHUB_REF_NAME%%-green-got.*} with changes upstream has not released: the mouse wheel turns where the pointer is (vercel-labs/agent-browser#2084), and \`record --condense\` cuts still stretches from recordings." \
+            agent-browser-linux-* SHA256SUMS
