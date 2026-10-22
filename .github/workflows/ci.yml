@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [green-got/condense]
+    branches: [main]
   pull_request:
-    branches: [green-got/condense]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
