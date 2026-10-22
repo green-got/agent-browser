@@ -22,6 +22,12 @@ impl<'a> EnvGuard<'a> {
         Self { _lock: lock, vars }
     }
 
+    /// Hold the lock without changing anything, for tests whose code reads the
+    /// environment: `DaemonState::new` and browser auto-launch both do.
+    pub fn lock() -> Self {
+        Self::new(&[])
+    }
+
     pub fn set(&self, name: &str, value: &str) {
         debug_assert!(
             self.vars.iter().any(|(n, _)| n == name),

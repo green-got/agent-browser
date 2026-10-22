@@ -391,6 +391,7 @@ fn minimal_command(action: &str, id: &str) -> Value {
 
 #[tokio::test]
 async fn test_all_documented_actions_are_handled() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     state.default_timeout_ms = 100;
 
@@ -428,6 +429,7 @@ async fn test_all_documented_actions_are_handled() {
 
 #[tokio::test]
 async fn test_success_response_format() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     let cmd = json!({ "action": "state_list", "id": "fmt-1" });
     let result = execute_command(&cmd, &mut state).await;
@@ -440,6 +442,7 @@ async fn test_success_response_format() {
 
 #[tokio::test]
 async fn test_error_response_format() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     let cmd = json!({ "action": "nonexistent_action_xyz", "id": "fmt-2" });
     let result = execute_command(&cmd, &mut state).await;
@@ -455,6 +458,7 @@ async fn test_error_response_format() {
 
 #[tokio::test]
 async fn test_state_list_without_browser() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     let cmd = json!({ "action": "state_list", "id": "nb-1" });
     let result = execute_command(&cmd, &mut state).await;
@@ -465,6 +469,7 @@ async fn test_state_list_without_browser() {
 
 #[tokio::test]
 async fn test_credentials_list_without_browser() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     let cmd = json!({ "action": "credentials_list", "id": "nb-2" });
     let result = execute_command(&cmd, &mut state).await;
@@ -524,6 +529,7 @@ async fn test_auth_save_and_show() {
 
 #[tokio::test]
 async fn test_har_start_stop_without_browser() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     // har_start requires a browser. Because execute_command auto-launches when
     // no browser is present, the result depends on Chrome availability: success
@@ -540,6 +546,7 @@ async fn test_har_start_stop_without_browser() {
 
 #[tokio::test]
 async fn test_state_clean_action() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
     let cmd = json!({ "action": "state_clean", "id": "clean-1", "days": 30 });
     let result = execute_command(&cmd, &mut state).await;
@@ -656,6 +663,7 @@ fn test_matches_status_filter() {
 
 #[tokio::test]
 async fn test_addscript_and_addinitscript_separate_dispatch() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
 
     // Both should be handled (not "Not yet implemented") even without a browser
@@ -692,6 +700,7 @@ async fn test_frame_context_management() {
 
 #[tokio::test]
 async fn test_addstyle_supports_content_and_url() {
+    let _env = crate::test_utils::EnvGuard::lock();
     let mut state = DaemonState::new();
 
     // Both content-based and url-based addstyle should be recognized

@@ -4948,6 +4948,7 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_human_click_preserves_session_mode() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = crate::native::actions::DaemonState::new();
         for human in [true, false] {
             let args = click_command_args(&json!({"selector": "#target", "human": human})).unwrap();
@@ -4955,7 +4956,8 @@ mod tests {
             let mut command = crate::commands::parse_command(&args, &flags).unwrap();
             assert_eq!(command.get("inputMode"), human.then_some(&json!("human")));
             assert!(command.get("defaultInputMode").is_none());
-            // Avoid launching Chrome: dispatch still exercises the shared mode handling.
+            // Dispatch still exercises the shared mode handling; where Chrome is
+            // installed the unknown command auto-launches it first.
             command["action"] = json!("unknown-test-command");
             crate::native::actions::execute_command(&command, &mut state).await;
             assert_eq!(state.input_mode, "instant");

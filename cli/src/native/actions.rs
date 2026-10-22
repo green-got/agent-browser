@@ -13870,6 +13870,7 @@ mod tests {
 
     #[tokio::test]
     async fn human_command_does_not_change_session_default() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = super::DaemonState::new();
         // Even a rejected command must not leak a per-command override.
         let _ = super::execute_command(
@@ -13884,6 +13885,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_input_mode_sets_session_default() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = super::DaemonState::new();
         let _ = super::execute_command(
             &serde_json::json!({
@@ -14950,6 +14952,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_policy_denies_read_before_fetch() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let dir = tempfile::tempdir().unwrap();
         let policy_path = dir.path().join("policy.json");
         fs::write(&policy_path, r#"{"deny":["read"]}"#).unwrap();
@@ -14971,6 +14974,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_policy_denies_a11y_url_as_navigation_before_launch() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let dir = tempfile::tempdir().unwrap();
         let policy_path = dir.path().join("policy.json");
         fs::write(&policy_path, r#"{"deny":["navigate"]}"#).unwrap();
@@ -14992,6 +14996,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_restore_config_is_not_applied_before_confirmation() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let dir = tempfile::tempdir().unwrap();
         let policy_path = dir.path().join("policy.json");
         fs::write(&policy_path, r#"{"confirm":["navigate"]}"#).unwrap();
@@ -15018,6 +15023,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_with_url_uses_session_domain_filter_before_fetch() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         {
             let mut df = state.domain_filter.write().await;
@@ -15071,6 +15077,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_with_url_cannot_broaden_session_domain_filter() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         {
             let mut df = state.domain_filter.write().await;
@@ -15094,6 +15101,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_without_url_does_not_auto_launch() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         let cmd = json!({ "action": "read", "id": "read-active-tab" });
 
@@ -15296,6 +15304,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_without_url_blocks_disallowed_active_tab_before_content() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let (port, server) = start_webdriver_response_server(vec![(
             "/session/test-session/url",
             json!({ "value": "https://evil.example/private" }),
@@ -15326,6 +15335,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_without_url_uses_session_domain_filter_before_content() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let (port, server) = start_webdriver_response_server(vec![(
             "/session/test-session/url",
             json!({ "value": "https://evil.example/private" }),
@@ -15359,6 +15369,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_without_url_allows_matching_active_tab() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let (port, server) = start_webdriver_response_server(vec![
             (
                 "/session/test-session/url",
@@ -17804,6 +17815,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_execute_har_stop_skips_browser_auto_launch() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let path = std::env::temp_dir().join(format!(
             "agent-browser-har-stop-{}.har",
             unix_timestamp_millis()
@@ -17878,6 +17890,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_execute_unknown_command() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         let cmd = json!({ "action": "unknown_action_xyz", "id": "test-1" });
         let result = execute_command(&cmd, &mut state).await;
@@ -17914,6 +17927,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_execute_empty_action() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         let cmd = json!({ "id": "test-2" });
         let result = execute_command(&cmd, &mut state).await;
@@ -17923,6 +17937,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_execute_close_without_browser() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         let cmd = json!({ "action": "close", "id": "test-3" });
         let result = execute_command(&cmd, &mut state).await;
@@ -17932,6 +17947,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_navigate_without_browser() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         {
             let mut df = state.domain_filter.write().await;
@@ -17951,6 +17967,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn test_credentials_roundtrip_via_actions() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let _lock = crate::native::auth::AUTH_TEST_MUTEX.lock().unwrap();
         let key_var = "AGENT_BROWSER_ENCRYPTION_KEY";
         let original = std::env::var(key_var).ok();
@@ -17999,6 +18016,7 @@ printf '%s' '{"protocol":"agent-browser.plugin.v1","success":true,"browser":{"cd
 
     #[tokio::test]
     async fn test_state_list_via_actions() {
+        let _env = crate::test_utils::EnvGuard::lock();
         let mut state = DaemonState::new();
         let cmd = json!({ "action": "state_list", "id": "s1" });
         let result = execute_command(&cmd, &mut state).await;
