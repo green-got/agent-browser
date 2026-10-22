@@ -2081,6 +2081,9 @@ Arguments:
 
 Options:
   -s, --selector <sel> CSS selector for a scrollable container
+  --human              Glide there and return once the scroll ends
+                       Also the default when the session's --input-mode is
+                       smooth or human, so a recording shows the page move
 
 Global Options:
   --json               Output as JSON
@@ -2092,17 +2095,23 @@ Examples:
   agent-browser scroll up 200
   agent-browser scroll left 100
   agent-browser scroll down 500 --selector "div.scroll-container"
+  agent-browser scroll down 800 --human
 "##
         }
         "scrollintoview" | "scrollinto" => {
             r##"
 agent-browser scrollintoview - Scroll element into view
 
-Usage: agent-browser scrollintoview <selector>
+Usage: agent-browser scrollintoview <selector> [--human]
 
 Scrolls the page until the specified element is visible in the viewport.
 
 Aliases: scrollinto
+
+Options:
+  --human              Glide there and return once the scroll ends
+                       Also the default when the session's --input-mode is
+                       smooth or human
 
 Global Options:
   --json               Output as JSON
@@ -2111,6 +2120,7 @@ Global Options:
 Examples:
   agent-browser scrollintoview "#footer"
   agent-browser scrollintoview @e15
+  agent-browser scrollintoview @e15 --human
 "##
         }
 
@@ -4059,7 +4069,7 @@ Options:
   --screenshot-dir <path>    Default screenshot output directory (or AGENT_BROWSER_SCREENSHOT_DIR)
   --screenshot-quality <n>   JPEG quality 0-100; ignored for PNG (or AGENT_BROWSER_SCREENSHOT_QUALITY)
   --screenshot-format <fmt>  Screenshot format: png, jpeg (or AGENT_BROWSER_SCREENSHOT_FORMAT)
-  --input-mode <mode>        Session pointer movement: instant (default), smooth, human
+  --input-mode <mode>        Session pointer and scroll movement: instant (default), smooth, human
   --headed                   Show browser window (not headless) (or AGENT_BROWSER_HEADED env)
   --webgpu                   Enable WebGPU; uses SwiftShader software Vulkan on Linux, no GPU required (or AGENT_BROWSER_WEBGPU env)
   --no-webmcp                Disable default experimental WebMCP support for locally launched Chrome

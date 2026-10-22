@@ -3507,6 +3507,99 @@ async fn e2e_hover_scroll_press() {
 // Raw mouse regressions
 // ---------------------------------------------------------------------------
 
+/// Scroll positions the page passed through, recorded on every scroll event.
+const SCROLL_POSITIONS_PAGE: &str = r#"<body style="margin:0;height:4000px">
+    <button id="near" style="position:absolute;top:100px">Near</button>
+    <button id="far" style="position:absolute;top:2500px" onclick="this.textContent='Clicked'">Far</button>
+    <script>window.positions = []; addEventListener('scroll', () => positions.push(scrollY));</script>
+    </body>"#;
+
+async fn scroll_positions(state: &mut DaemonState) -> Vec<i64> {
+    let resp = execute_command(
+        &json!({ "id": "positions", "action": "evaluate", "script": "positions.splice(0)" }),
+        state,
+    )
+    .await;
+    assert_success(&resp);
+    get_data(&resp)["result"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|y| y.as_f64().unwrap().round() as i64)
+        .collect()
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_human_scrolls_glide_and_return_once_still() {
+    let mut state = DaemonState::new();
+    let resp = execute_command(
+        &json!({ "id": "1", "action": "launch", "headless": true }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    let resp = execute_command(
+        &json!({
+            "id": "2",
+            "action": "navigate",
+            "url": format!("data:text/html;base64,{}", STANDARD.encode(SCROLL_POSITIONS_PAGE))
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let resp = execute_command(
+        &json!({ "id": "3", "action": "scroll", "direction": "down", "amount": 800 }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(scroll_positions(&mut state).await, [800]);
+
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "scroll", "direction": "up", "amount": 800, "inputMode": "human" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    // Read without waiting: the command returns only once the glide has ended.
+    let glide = scroll_positions(&mut state).await;
+    assert!(
+        glide.len() > 3,
+        "should pass through several positions, got {glide:?}"
+    );
+    assert_eq!(glide.last(), Some(&0), "got {glide:?}");
+
+    // A visible target leaves the page still; an off-screen one glides into view first.
+    let resp = execute_command(
+        &json!({ "id": "5", "action": "click", "selector": "#near", "inputMode": "human" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    assert_eq!(scroll_positions(&mut state).await, Vec::<i64>::new());
+    let resp = execute_command(
+        &json!({ "id": "6", "action": "click", "selector": "#far", "inputMode": "human" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    let glide = scroll_positions(&mut state).await;
+    assert!(glide.len() > 3, "should glide to the target, got {glide:?}");
+    let resp = execute_command(
+        &json!({ "id": "7", "action": "evaluate", "script": "document.getElementById('far').textContent" }),
+        &mut state,
+    )
+    .await;
+    assert_eq!(get_data(&resp)["result"], "Clicked");
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+}
+
 #[tokio::test]
 #[ignore]
 async fn e2e_mouse_wheel_scrolls_the_element_under_the_pointer() {

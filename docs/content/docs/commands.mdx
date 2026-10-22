@@ -25,6 +25,7 @@ agent-browser check <sel>             # Check checkbox
 agent-browser uncheck <sel>           # Uncheck checkbox
 agent-browser scroll <dir> [px]       # Scroll (up/down/left/right, --selector <sel>)
 agent-browser scrollintoview <sel>    # Scroll element into view
+agent-browser scroll down 800 --human # Glide and return once the scroll ends
 agent-browser drag <src> <dst>        # Drag and drop
 agent-browser upload <sel> <files>    # Upload files
 agent-browser screenshot [path]       # Screenshot (--full for full page)
@@ -642,7 +643,7 @@ See [Init Scripts & Extensions](/init-scripts) for launch-time scripts, runtime 
 --confirm-actions <list> # Action categories requiring confirmation
 --confirm-interactive    # Interactive confirmation prompts (auto-denies if stdin is not a TTY)
 --engine <name>          # Browser engine: chrome (default), lightpanda, obscura (experimental)
---input-mode <mode>      # Pointer movement: instant (default), smooth, human
+--input-mode <mode>      # Pointer and scroll movement: instant (default), smooth, human
 --idle-timeout <time>    # Auto-shutdown daemon after inactivity (default: 1h; 0 disables)
 --no-auto-dialog         # Disable auto-accept for alert and beforeunload dialogs
 --model <name>           # AI model for chat (or AI_GATEWAY_MODEL env)

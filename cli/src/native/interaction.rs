@@ -384,6 +384,24 @@ pub async fn press_key_with_modifiers(
     Ok(())
 }
 
+/// Waits, inside the page, until `read()` stops changing: the end of a smooth scroll, which
+/// starts on the next frame and runs for as long as the browser decides. Settles after a few
+/// still frames, or after 3 s should frames stop, as they do in a background tab.
+const SETTLE_JS: &str = r#"const settle = (read) => new Promise((resolve) => {
+    let last = read(), still = 0;
+    const timeout = setTimeout(resolve, 3000);
+    const tick = () => {
+        const now = read();
+        still = now === last ? still + 1 : 0;
+        last = now;
+        if (still >= 6) { clearTimeout(timeout); resolve(); } else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+});"#;
+
+/// Scrolls by the deltas, gliding there and returning once the scroll ends when `animated`, so a
+/// recording shows the page move rather than jump.
+#[allow(clippy::too_many_arguments)]
 pub async fn scroll(
     client: &CdpClient,
     session_id: &str,
@@ -391,12 +409,19 @@ pub async fn scroll(
     selector_or_ref: Option<&str>,
     delta_x: f64,
     delta_y: f64,
+    animated: bool,
     iframe_sessions: &HashMap<String, String>,
 ) -> Result<(), String> {
     if let Some(sel) = selector_or_ref {
         let (object_id, effective_session_id) =
             resolve_element_object_id(client, session_id, ref_map, sel, iframe_sessions).await?;
-        let js = "function(dx, dy) { this.scrollBy(dx, dy); }".to_string();
+        let js = if animated {
+            format!(
+                "async function(dx, dy) {{ {SETTLE_JS} this.scrollBy({{ left: dx, top: dy, behavior: 'smooth' }}); await settle(() => this.scrollLeft + ',' + this.scrollTop); }}"
+            )
+        } else {
+            "function(dx, dy) { this.scrollBy(dx, dy); }".to_string()
+        };
         client
             .send_command_typed::<_, Value>(
                 "Runtime.callFunctionOn",
@@ -414,20 +439,26 @@ pub async fn scroll(
                         },
                     ]),
                     return_by_value: Some(true),
-                    await_promise: Some(false),
+                    await_promise: Some(animated),
                 },
                 Some(&effective_session_id),
             )
             .await?;
     } else {
-        let js = format!("window.scrollBy({}, {})", delta_x, delta_y);
+        let js = if animated {
+            format!(
+                "(async () => {{ {SETTLE_JS} window.scrollBy({{ left: {delta_x}, top: {delta_y}, behavior: 'smooth' }}); await settle(() => window.scrollX + ',' + window.scrollY); }})()"
+            )
+        } else {
+            format!("window.scrollBy({}, {})", delta_x, delta_y)
+        };
         client
             .send_command_typed::<_, Value>(
                 "Runtime.evaluate",
                 &EvaluateParams {
                     expression: js,
                     return_by_value: Some(true),
-                    await_promise: Some(false),
+                    await_promise: Some(animated),
                 },
                 Some(session_id),
             )
@@ -812,11 +843,24 @@ pub async fn select_all(
     Ok(())
 }
 
+/// How [`scroll_into_view`] moves the page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollIntoView {
+    /// Centres the element at once.
+    Instant,
+    /// Glides until the element is centred, returning once the scroll ends.
+    Animated,
+    /// Glides only when the element is not already fully visible, as before a pointer moves to
+    /// it, so a visible target leaves the page still.
+    AnimatedIfNeeded,
+}
+
 pub async fn scroll_into_view(
     client: &CdpClient,
     session_id: &str,
     ref_map: &RefMap,
     selector_or_ref: &str,
+    how: ScrollIntoView,
     iframe_sessions: &HashMap<String, String>,
 ) -> Result<(), String> {
     let (object_id, effective_session_id) = resolve_element_object_id(
@@ -828,17 +872,38 @@ pub async fn scroll_into_view(
     )
     .await?;
 
+    let function_declaration = match how {
+        ScrollIntoView::Instant => {
+            "function() { this.scrollIntoView({ block: 'center', inline: 'center' }); }".to_string()
+        }
+        ScrollIntoView::Animated | ScrollIntoView::AnimatedIfNeeded => format!(
+            r#"async function(onlyIfNeeded) {{
+                {SETTLE_JS}
+                const rect = this.getBoundingClientRect();
+                const visible = rect.top >= 0 && rect.left >= 0
+                    && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+                if (onlyIfNeeded && visible) return;
+                this.scrollIntoView({{ block: 'center', inline: 'center', behavior: 'smooth' }});
+                await settle(() => {{ const r = this.getBoundingClientRect(); return r.left + ',' + r.top; }});
+            }}"#
+        ),
+    };
+    let animated = how != ScrollIntoView::Instant;
+
     client
         .send_command_typed::<_, Value>(
             "Runtime.callFunctionOn",
             &CallFunctionOnParams {
-                function_declaration:
-                    "function() { this.scrollIntoView({ block: 'center', inline: 'center' }); }"
-                        .to_string(),
+                function_declaration,
                 object_id: Some(object_id),
-                arguments: None,
+                arguments: animated.then(|| {
+                    vec![CallArgument {
+                        value: Some(serde_json::json!(how == ScrollIntoView::AnimatedIfNeeded)),
+                        object_id: None,
+                    }]
+                }),
                 return_by_value: Some(true),
-                await_promise: Some(false),
+                await_promise: Some(animated),
             },
             Some(&effective_session_id),
         )

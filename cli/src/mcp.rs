@@ -916,11 +916,21 @@ fn tools() -> Vec<Value> {
             json!({
                 "direction": { "type": "string", "enum": ["up", "down", "left", "right"], "default": "down" },
                 "amount": { "type": "integer", "default": 300, "description": "Pixels to scroll." },
-                "selector": { "type": "string", "description": "Optional element selector to scroll." }
+                "selector": { "type": "string", "description": "Optional element selector to scroll." },
+                "human": { "type": "boolean", "default": false, "description": "Glide there and return once the scroll ends." }
             }),
             &[],
         ),
-        tool(TOOL_SCROLL_INTO_VIEW, "Scroll into view", "Scroll an element into view.", json!({ "selector": selector_schema() }), &["selector"]),
+        tool(
+            TOOL_SCROLL_INTO_VIEW,
+            "Scroll into view",
+            "Scroll an element into view.",
+            json!({
+                "selector": selector_schema(),
+                "human": { "type": "boolean", "default": false, "description": "Glide there and return once the scroll ends." }
+            }),
+            &["selector"],
+        ),
         tool(TOOL_WAIT_MS, "Wait milliseconds", "Wait for a fixed time.", json!({ "ms": { "type": "integer", "minimum": 0 } }), &["ms"]),
         wait_tool(TOOL_WAIT_FOR_SELECTOR, "Wait for selector", "Wait for an element to appear.", json!({ "selector": selector_schema() }), &["selector"]),
         wait_tool(TOOL_WAIT_FOR_TEXT, "Wait for text", "Wait for text to appear.", json!({ "text": { "type": "string" } }), &["text"]),
@@ -2241,7 +2251,7 @@ fn call_tool(params: Option<&Value>, config: &McpConfig) -> Result<Value, Protoc
         TOOL_UPLOAD => call_upload(arguments),
         TOOL_DOWNLOAD => call_download(arguments),
         TOOL_SCROLL => call_scroll(arguments),
-        TOOL_SCROLL_INTO_VIEW => call_simple_selector(arguments, "scrollintoview"),
+        TOOL_SCROLL_INTO_VIEW => call_scroll_into_view(arguments),
         TOOL_WAIT_MS => call_wait_ms(arguments),
         TOOL_WAIT_FOR_SELECTOR => call_wait_flag(arguments, None, "selector"),
         TOOL_WAIT_FOR_TEXT => call_wait_flag(arguments, Some("--text"), "text"),
@@ -2755,6 +2765,20 @@ fn call_scroll(arguments: &Value) -> Result<Value, ProtocolError> {
     if let Some(selector) = optional_string(arguments, "selector")? {
         args.push("--selector".to_string());
         args.push(selector);
+    }
+    if optional_bool(arguments, "human")?.unwrap_or(false) {
+        args.push("--human".to_string());
+    }
+    call_cli_tool(arguments, args, None)
+}
+
+fn call_scroll_into_view(arguments: &Value) -> Result<Value, ProtocolError> {
+    let mut args = vec![
+        "scrollintoview".to_string(),
+        required_string(arguments, "selector")?,
+    ];
+    if optional_bool(arguments, "human")?.unwrap_or(false) {
+        args.push("--human".to_string());
     }
     call_cli_tool(arguments, args, None)
 }

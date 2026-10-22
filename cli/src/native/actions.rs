@@ -6306,6 +6306,16 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
         .and_then(Value::as_str)
         .unwrap_or(&state.input_mode);
     if input_mode != "instant" {
+        // Glide an off-screen target into view first: finding its centre scrolls it there at once.
+        interaction::scroll_into_view(
+            &mgr.client,
+            &session_id,
+            &state.ref_map,
+            selector,
+            interaction::ScrollIntoView::AnimatedIfNeeded,
+            &state.iframe_sessions,
+        )
+        .await?;
         let (x, y, target_session_id) = super::element::resolve_element_center(
             &mgr.client,
             &session_id,
@@ -6548,6 +6558,11 @@ async fn handle_scroll(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         }
     }
 
+    let animated = cmd
+        .get("inputMode")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.input_mode)
+        != "instant";
     interaction::scroll(
         &mgr.client,
         &session_id,
@@ -6555,6 +6570,7 @@ async fn handle_scroll(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         selector,
         dx,
         dy,
+        animated,
         &state.iframe_sessions,
     )
     .await?;
@@ -8279,11 +8295,22 @@ async fn handle_scrollintoview(cmd: &Value, state: &mut DaemonState) -> Result<V
         .and_then(|v| v.as_str())
         .ok_or("Missing 'selector' parameter")?;
 
+    let how = if cmd
+        .get("inputMode")
+        .and_then(Value::as_str)
+        .unwrap_or(&state.input_mode)
+        == "instant"
+    {
+        interaction::ScrollIntoView::Instant
+    } else {
+        interaction::ScrollIntoView::Animated
+    };
     interaction::scroll_into_view(
         &mgr.client,
         &session_id,
         &state.ref_map,
         selector,
+        how,
         &state.iframe_sessions,
     )
     .await?;

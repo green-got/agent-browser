@@ -655,9 +655,12 @@ fn parse_command_inner(args: &[String], flags: &Flags) -> Result<Value, ParseErr
                         } else {
                             return Err(ParseError::MissingArguments {
                                 context: "scroll --selector".to_string(),
-                                usage: "scroll [direction] [amount] [--selector <sel>]",
+                                usage: "scroll [direction] [amount] [--selector <sel>] [--human]",
                             });
                         }
+                    }
+                    "--human" => {
+                        obj.insert("inputMode".to_string(), json!("human"));
                     }
                     arg if arg.starts_with('-') => {}
                     _ => {
@@ -686,11 +689,17 @@ fn parse_command_inner(args: &[String], flags: &Flags) -> Result<Value, ParseErr
             Ok(cmd)
         }
         "scrollintoview" | "scrollinto" => {
-            let sel = rest.first().ok_or_else(|| ParseError::MissingArguments {
-                context: "scrollintoview".to_string(),
-                usage: "scrollintoview <selector>",
+            let sel = rest.iter().find(|arg| **arg != "--human").ok_or_else(|| {
+                ParseError::MissingArguments {
+                    context: "scrollintoview".to_string(),
+                    usage: "scrollintoview <selector> [--human]",
+                }
             })?;
-            Ok(json!({ "id": id, "action": "scrollintoview", "selector": sel }))
+            let mut cmd = json!({ "id": id, "action": "scrollintoview", "selector": sel });
+            if rest.contains(&"--human") {
+                cmd["inputMode"] = json!("human");
+            }
+            Ok(cmd)
         }
 
         // === Wait ===
@@ -4472,6 +4481,23 @@ mod tests {
         let cmd = parse_command(&args("click @e1 --human"), &default_flags()).unwrap();
         assert_eq!(cmd["selector"], "@e1");
         assert_eq!(cmd["inputMode"], "human");
+    }
+
+    #[test]
+    fn test_scroll_human() {
+        let cmd = parse_command(&args("scroll down 800 --human"), &default_flags()).unwrap();
+        assert_eq!(cmd["direction"], "down");
+        assert_eq!(cmd["amount"], 800);
+        assert_eq!(cmd["inputMode"], "human");
+    }
+
+    #[test]
+    fn test_scrollintoview_human() {
+        let cmd = parse_command(&args("scrollintoview --human @e3"), &default_flags()).unwrap();
+        assert_eq!(cmd["selector"], "@e3");
+        assert_eq!(cmd["inputMode"], "human");
+        let cmd = parse_command(&args("scrollintoview @e3"), &default_flags()).unwrap();
+        assert!(cmd.get("inputMode").is_none());
     }
 
     #[test]

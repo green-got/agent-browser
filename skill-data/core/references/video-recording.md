@@ -99,6 +99,15 @@ Chrome's screencast does not include the native pointer. Pass `--cursor` to add 
 agent-browser record start ./walkthrough.webm --cursor
 ```
 
+A pointer that jumps from target to target is hard to follow. Set the session's input mode to `human` before recording, and clicks glide the pointer along an eased curve, scrolls glide instead of jumping, and a click on an off-screen target glides it into view first:
+
+```bash
+agent-browser --input-mode human record start ./walkthrough.webm --cursor
+agent-browser click @e3              # pointer glides there
+agent-browser scroll down 800        # page glides; returns once it stops
+agent-browser type @e4 "hello"       # text appears letter by letter, where fill drops it in
+```
+
 ## Contact Sheets
 
 Pass `--contact-sheet` to create a timestamped summary with highlighted changes.

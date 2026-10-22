@@ -157,6 +157,7 @@ agent-browser select @e4 "a" "b"          # select multiple
 agent-browser upload @e5 file1.pdf        # upload file(s)
 agent-browser scroll down 500             # scroll page (up/down/left/right)
 agent-browser scrollintoview @e1          # scroll element into view
+agent-browser scroll down 800 --human     # glide, as a person's scroll would
 agent-browser drag @e1 @e2                # drag and drop
 agent-browser drag @e1 @e2 --human        # drag with curved, eased movement
 ```
