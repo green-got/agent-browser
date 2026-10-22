@@ -1232,7 +1232,12 @@ impl BrowserManager {
             .pages
             .get(self.active_page_index)
             .map(|p| p.target_id.clone());
-        Ok(json!({ "url": page_url, "title": title, "targetId": target_id }))
+        Ok(json!({
+            "url": page_url,
+            "title": title,
+            "targetId": target_id,
+            "loaderId": nav_result.loader_id,
+        }))
     }
 
     async fn wait_for_lifecycle(

@@ -190,6 +190,8 @@ pub struct FetchPausedRequest {
     pub url: String,
     pub resource_type: String,
     pub frame_id: String,
+    /// The `Network` request ID, equal to the loader ID for navigations.
+    pub network_id: Option<String>,
     pub session_id: String,
     /// Original request headers from the Fetch.requestPaused event, needed
     /// because Fetch.continueRequest replaces (not merges) headers.
@@ -606,8 +608,10 @@ pub struct DaemonState {
     /// Key is the origin (scheme + host + port), value is the headers map.
     /// Wrapped in Arc<RwLock<>> so the background Fetch handler can read it.
     pub origin_headers: Arc<RwLock<HashMap<String, HashMap<String, String>>>>,
-    /// Last document URL the domain filter blocked, keyed by frame ID, so
-    /// navigation can report a redirect that landed on the blocked page.
+    /// Document URLs the domain filter blocked, keyed by the network request
+    /// ID, which for a navigation is its loader ID, so navigation can report a
+    /// redirect that landed on the blocked page. Keying by frame would let a
+    /// late event from an abandoned navigation fail the next one in that frame.
     pub blocked_documents: Arc<std::sync::Mutex<HashMap<String, String>>>,
     /// Proxy authentication credentials (username, password) for handling
     /// Fetch.authRequired events from authenticated proxies.
@@ -1012,6 +1016,11 @@ impl DaemonState {
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
+                        let network_id = event
+                            .params
+                            .get("networkId")
+                            .and_then(|v| v.as_str())
+                            .map(ToString::to_string);
                         let sid = event.session_id.clone().unwrap_or_default();
 
                         let paused = FetchPausedRequest {
@@ -1019,6 +1028,7 @@ impl DaemonState {
                             url: request_url,
                             resource_type,
                             frame_id,
+                            network_id,
                             session_id: sid,
                             request_headers,
                         };
@@ -5553,16 +5563,15 @@ async fn navigate_active_page(
 
     // The domain filter answers a blocked document with a 403 page, so a
     // redirect to a disallowed host still completes as a navigation.
-    // The main frame shares its ID with the target.
     let blocked = result
-        .get("targetId")
+        .get("loaderId")
         .and_then(|v| v.as_str())
-        .and_then(|target_id| {
+        .and_then(|loader_id| {
             state
                 .blocked_documents
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .remove(target_id)
+                .remove(loader_id)
         });
     if let Some(blocked_url) = blocked {
         return Err(format!(
@@ -11873,10 +11882,12 @@ async fn resolve_fetch_paused(
             if let Some(hostname) = parsed.host_str() {
                 if !filter.is_allowed(hostname) {
                     if paused.resource_type.eq_ignore_ascii_case("document") {
-                        blocked_documents
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .insert(paused.frame_id.clone(), paused.url.clone());
+                        if let Some(network_id) = &paused.network_id {
+                            blocked_documents
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .insert(network_id.clone(), paused.url.clone());
+                        }
                         let error_body = format!(
                             "<html><body><h1>Blocked</h1><p>Navigation to {} is not allowed by domain filter.</p></body></html>",
                             hostname

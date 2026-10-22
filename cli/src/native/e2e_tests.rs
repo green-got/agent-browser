@@ -4430,6 +4430,85 @@ async fn e2e_domain_filter_reports_blocked_redirect() {
 
 #[tokio::test]
 #[ignore]
+async fn e2e_domain_filter_ignores_blocked_document_of_abandoned_navigation() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        for _ in 0..20 {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let _ = stream.read(&mut buf).await;
+                let body = "<!doctype html><title>Allowed</title>allowed";
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body,
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.flush().await;
+            });
+        }
+    });
+
+    let mut state = DaemonState::new();
+    {
+        let mut df = state.domain_filter.write().await;
+        *df = Some(super::network::DomainFilter::new("localhost"));
+    }
+
+    let resp = execute_command(
+        &json!({ "id": "1", "action": "launch", "headless": true }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    let allowed_url = format!("http://localhost:{}/", port);
+    let resp = execute_command(
+        &json!({ "id": "2", "action": "navigate", "url": allowed_url }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    // Holding the routes lock stalls the fetch handler, so the blocked event
+    // of the page's own navigation is only processed once the next
+    // navigation has started.
+    let stalled_handler = state.routes.clone().write_owned().await;
+    let resp = execute_command(
+        &json!({
+            "id": "3",
+            "action": "evaluate",
+            "script": format!("location.href = 'http://127.0.0.1:{}/denied'", port),
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        drop(stalled_handler);
+    });
+
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "navigate", "url": allowed_url }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    assert_eq!(get_data(&resp)["title"], "Allowed", "{}", resp);
+
+    let resp = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    assert_success(&resp);
+    server.abort();
+}
+
+#[tokio::test]
+#[ignore]
 async fn e2e_domain_filter_blocks_page_created_popup_before_first_request() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
