@@ -286,7 +286,12 @@ mod tests {
             let leftovers: Vec<_> = fs::read_dir(dir)
                 .unwrap()
                 .filter_map(|e| e.ok())
-                .filter(|e| e.file_name().to_string_lossy().contains(".tmp."))
+                // Only this session's: on hosts with Chrome, unit tests that launch a
+                // browser persist the `default` session's binding to the same directory.
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    name.starts_with("tmpcheck.") && name.contains(".tmp.")
+                })
                 .collect();
             assert!(leftovers.is_empty(), "temp files left: {:?}", leftovers);
         });

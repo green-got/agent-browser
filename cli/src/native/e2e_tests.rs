@@ -6704,11 +6704,15 @@ async fn start_stateful_auth_login_server(
                 let mut buf = vec![0u8; 8192];
                 let n = stream.read(&mut buf).await.unwrap_or(0);
                 let request = String::from_utf8_lossy(&buf[..n]);
-                let path = request
+                // Chrome's speculative preconnects can close without sending a
+                // request; counting those made the request count timing-dependent.
+                let Some(path) = request
                     .lines()
                     .next()
                     .and_then(|line| line.split_whitespace().nth(1))
-                    .unwrap_or("/");
+                else {
+                    return;
+                };
                 if !path.starts_with("/favicon") {
                     counter.fetch_add(1, Ordering::SeqCst);
                 }
