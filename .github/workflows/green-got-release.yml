@@ -1,8 +1,8 @@
 # Green-Got's build of agent-browser carrying fixes upstream has not released yet; the core
 # repository's sandbox and app platform images install the Linux binaries, and Macs can use the
-# macOS one. Retire this fork once
-# upstream releases the fixes: the wheel at the pointer (vercel-labs/agent-browser#2084) and
-# `record --condense`. Smooth scrolling in `human` and `smooth` input modes is the fork's own.
+# macOS one. Retire this fork once upstream releases the wheel at the pointer
+# (vercel-labs/agent-browser#2084) and `record --condense`; smooth scrolling in the `human` and
+# `smooth` input modes is the fork's own.
 name: Green-Got release
 
 on:
