@@ -12,6 +12,14 @@
       {
         "from": "agent-browser record start <path> --contact-sheet-threshold 0.02 # Tune changed-frame selection",
         "to": "agent-browser record start <path> --contact-sheet-threshold 0.02 # Tune changed-frame selection\nagent-browser record start <path> --condense # Cut still stretches to a brief hold"
+      },
+      {
+        "from": "agent-browser scrollintoview <sel>    # Scroll element into view",
+        "to": "agent-browser scrollintoview <sel>    # Scroll element into view\nagent-browser scroll down 800 --human # Glide and return once the scroll ends"
+      },
+      {
+        "from": "--input-mode <mode>      # Pointer movement: instant (default), smooth, human",
+        "to": "--input-mode <mode>      # Pointer and scroll movement: instant (default), smooth, human"
       }
     ],
     "/configuration": [
@@ -50,6 +58,9 @@
     ]
   },
   "resources": {
-    "/schema.json": { "size": 9427, "sha256": "eecb6f5aa3f6c7f0a4f0fb1176923c5b7d005065fea101ff90394c2845b97468" }
+    "/schema.json": {
+      "size": 9427,
+      "sha256": "eecb6f5aa3f6c7f0a4f0fb1176923c5b7d005065fea101ff90394c2845b97468"
+    }
   }
 }
